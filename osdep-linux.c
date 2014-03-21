@@ -60,6 +60,26 @@ osdep_get_name(int fd, unused char *tty)
 	return (buf);
 }
 
+// 0 on failure
+pid_t
+parent_pid_of(pid_t pid) {
+	char		*path;
+	FILE		*f;
+	pid_t		ret = 0;
+
+	xasprintf(&path, "/proc/%lld/stat", (long long) pid);
+	f = fopen(path, "r");
+	if (!f)
+		return 0;
+
+	if (1 != fscanf(f, "%*d %*s %*c %d", &ret)) {
+		ret = 0;
+	}
+
+	fclose(f);
+	return ret;
+}
+
 char *
 osdep_get_cwd(int fd)
 {
@@ -71,13 +91,17 @@ osdep_get_cwd(int fd)
 	if ((pgrp = tcgetpgrp(fd)) == -1)
 		return (NULL);
 
-	xasprintf(&path, "/proc/%lld/cwd", (long long) pgrp);
-	n = readlink(path, target, MAXPATHLEN);
-	free(path);
-	if (n > 0) {
-		target[n] = '\0';
-		return (target);
-	}
+	do {
+		xasprintf(&path, "/proc/%lld/cwd", (long long) pgrp);
+		n = readlink(path, target, MAXPATHLEN);
+		free(path);
+		if (n > 0) {
+			target[n] = '\0';
+			return (target);
+		}
+		pgrp = parent_pid_of(pgrp);
+	} while (pgrp);
+
 	return (NULL);
 }
 
